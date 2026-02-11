@@ -6,7 +6,6 @@ on:
     tags: [ 'v*.*.*' ]   # 推送 v1.0.0 格式 tag 时触发  
   pull_request:  
     branches: [ "main" ]   # PR 时只构建不推送
-
 env:  
   # GitHub Container Registry 配置  
   REGISTRY_GHCR: ghcr.io  
