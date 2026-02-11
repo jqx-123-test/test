@@ -10,7 +10,6 @@ env:
   # GitHub Container Registry 配置  
   REGISTRY_GHCR: ghcr.io  
   IMAGE_NAME_GHCR: ${{ github.repository }} 
-
 jobs:  
   build-and-push:  
     runs-on: ubuntu-latest  
