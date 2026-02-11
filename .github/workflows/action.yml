@@ -1,36 +1,64 @@
-# This is a basic workflow to help you get started with Actions
+name: Build and Publish Docker Image
 
-name: CI
+on:  
+  push:  
+    branches: [ "main" ]    # 推送到 main 分支时触发  
+    tags: [ 'v*.*.*' ]   # 推送 v1.0.0 格式 tag 时触发  
+  pull_request:  
+    branches: [ "main" ]   # PR 时只构建不推送
 
-# Controls when the workflow will run
-on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+env:  
+  # GitHub Container Registry 配置  
+  REGISTRY_GHCR: ghcr.io  
+  IMAGE_NAME_GHCR: ${{ github.repository }} 
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+jobs:  
+  build-and-push:  
+    runs-on: ubuntu-latest  
+    permissions:  
+      contents: read  
+      packages: write # 允许写入 GitHub Packages
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
-jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    steps:  
+      # 1. 检出代码  
+      - name: Checkout repository  
+        uses: actions/checkout@v4
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      # 2. 设置 Docker 构建环境  
+      - name: Set up Docker Buildx  
+        uses: docker/setup-buildx-action@v3
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      # 3. 登录 GitHub Container Registry  
+      - name: Log into ghcr.io  
+        if: github.event_name != 'pull_request'  
+        uses: docker/login-action@v3  
+        with:  
+          registry: ${{ env.REGISTRY_GHCR }}  
+          username: ${{ github.actor }}  
+          password: ${{ secrets.GITHUB_TOKEN }} # GitHub 自带 Token
+      # 5. 提取元数据 (自动生成 Tags)  
+      # 这步非常关键，它会同时为两个 Registry 生成对应的 tags  
+      - name: Extract Docker metadata  
+        id: meta  
+        uses: docker/metadata-action@v5  
+        with:  
+          images: |  
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}  
+            ${{ env.IMAGE_NAME_DOCKERHUB }}  
+          tags: |  
+            type=semver,pattern={{version}}  
+            type=ref,event=branch  
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+      # 6. 构建并推送  
+      - name: Build and push Docker image  
+        id: build-and-push  
+        uses: docker/build-push-action@v5  
+        with:  
+          context: .  
+          file: ./Dockerfile  
+          push: ${{ github.event_name != 'pull_request' }}  
+          tags: ${{ steps.meta.outputs.tags }}  
+          labels: ${{ steps.meta.outputs.labels }}  
+          cache-from: type=gha # 使用 GitHub Actions 缓存加速  
+          cache-to: type=gha,mode=max
